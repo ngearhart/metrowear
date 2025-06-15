@@ -45,15 +45,31 @@ import com.google.android.gms.location.LocationServices
 import com.google.android.gms.location.LocationResult
 import com.google.android.gms.location.LocationRequest
 import com.google.android.gms.location.Priority
+import com.noahgearhart.metrowear.callApi
+import io.ktor.client.HttpClient
+import io.ktor.client.engine.cio.CIO
+import io.ktor.client.request.get
+import io.ktor.client.statement.HttpResponse
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.cancel
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.newSingleThreadContext
+import kotlinx.coroutines.withContext
+
 
 class MainActivity : ComponentActivity() {
     private lateinit var fusedLocationClient: FusedLocationProviderClient
     private lateinit var locationCallback: LocationCallback
 
+    private var currentStatus = listOf<TrainArrival>();
+    private var currentStation = "";
     private var requestCode = 93479024;
+    val scope = CoroutineScope(Job() + Dispatchers.Main)
 
-   @RequiresApi(Build.VERSION_CODES.S)
-   override fun onCreate(savedInstanceState: Bundle?) {
+    @RequiresApi(Build.VERSION_CODES.S)
+    override fun onCreate(savedInstanceState: Bundle?) {
 //        installSplashScreen()
 
         Log.i("MetroWear", "onCreate")
@@ -63,10 +79,9 @@ class MainActivity : ComponentActivity() {
             override fun onLocationResult(p0: LocationResult) {
                 Log.i("MetroWear", "Got locations")
                 for (location in p0.locations) {
+                    currentStation = location.latitude.toString()
                     // Update UI with location data
-                    setContent {
-                        ComposeList(getMockArrivals(), location.latitude.toString())
-                    }
+                    updateUI()
                 }
             }
         }
@@ -78,7 +93,10 @@ class MainActivity : ComponentActivity() {
         if (checkSelfPermission(Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_DENIED) {
             Log.e("MetroWear", "No location permission")
             requestPermissions(
-                arrayOf(Manifest.permission.ACCESS_FINE_LOCATION, Manifest.permission.ACCESS_COARSE_LOCATION),
+                arrayOf(
+                    Manifest.permission.ACCESS_FINE_LOCATION,
+                    Manifest.permission.ACCESS_COARSE_LOCATION
+                ),
                 requestCode
             )
         } else {
@@ -86,8 +104,20 @@ class MainActivity : ComponentActivity() {
             startLocationUpdates()
         }
 
+        updateUI()
+
+        scope.launch {
+            withContext(Dispatchers.IO) {
+                currentStatus = callApi()
+                updateUI()
+            }
+        }
+
+    }
+
+    fun updateUI() {
         setContent {
-            ComposeList(getMockArrivals(), "none")
+            ComposeList(currentStatus, currentStation)
         }
     }
 
@@ -133,6 +163,11 @@ class MainActivity : ComponentActivity() {
         stopLocationUpdates()
     }
 
+    override fun onDestroy() {
+        super.onDestroy()
+        scope.cancel()
+    }
+
     companion object {
         internal const val EXTRA_JOURNEY = "journey"
         internal const val EXTRA_JOURNEY_CONVERSATION = "journey:conversation"
@@ -144,9 +179,11 @@ class MainActivity : ComponentActivity() {
     @RequiresPermission(allOf = [Manifest.permission.ACCESS_FINE_LOCATION, Manifest.permission.ACCESS_COARSE_LOCATION])
     private fun startLocationUpdates() {
         Log.i("MetroWear", "Starting location updates")
-        fusedLocationClient.requestLocationUpdates(LocationRequest.Builder(Priority.PRIORITY_HIGH_ACCURACY, 30000).build(),
+        fusedLocationClient.requestLocationUpdates(
+            LocationRequest.Builder(Priority.PRIORITY_HIGH_ACCURACY, 30000).build(),
             locationCallback,
-            Looper.getMainLooper())
+            Looper.getMainLooper()
+        )
     }
 
     private fun stopLocationUpdates() {
@@ -181,7 +218,9 @@ fun ComposeList(arrivals: List<TrainArrival>, location: String) {
         ) {
             item {
                 ListHeader(
-                    modifier = Modifier.fillMaxWidth().transformedHeight(this, transformationSpec),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .transformedHeight(this, transformationSpec),
                     transformation = SurfaceTransformation(transformationSpec)
                 ) {
                     Text(text = location)
@@ -191,9 +230,15 @@ fun ComposeList(arrivals: List<TrainArrival>, location: String) {
             arrivals.sortedBy { it.arrivalTimestamp }.map {
                 item {
                     Button(
-                        modifier = Modifier.fillMaxWidth().transformedHeight(this, transformationSpec),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .transformedHeight(this, transformationSpec),
                         transformation = SurfaceTransformation(transformationSpec),
-                        colors = ButtonDefaults.buttonColors(containerColor = it.line.androidColor, contentColor = it.line.textColor, iconColor = it.line.textColor),
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = it.line.androidColor,
+                            contentColor = it.line.textColor,
+                            iconColor = it.line.textColor
+                        ),
                         onClick = { /* ... */ },
 //                        icon = {
 //                            Icon(
@@ -203,7 +248,7 @@ fun ComposeList(arrivals: List<TrainArrival>, location: String) {
 //                        },
                     ) {
                         Text(
-                            text = it.destination,
+                            text = it.shortDestination,
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis,
                         )
