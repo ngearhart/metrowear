@@ -72,4 +72,6 @@ dependencies {
     implementation("androidx.wear.compose:compose-ui-tooling:1.5.0-beta03")
     implementation("com.google.android.horologist:horologist-compose-layout:0.7.14-beta")
 
+    implementation("com.google.android.gms:play-services-location:21.3.0")
+
 }

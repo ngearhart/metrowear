@@ -5,9 +5,16 @@
 
 package com.noahgearhart.metrowear.presentation
 
+import android.Manifest
+import android.content.pm.PackageManager
+import android.os.Build
 import android.os.Bundle
+import android.os.Looper
+import android.util.Log
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
+import androidx.annotation.RequiresApi
+import androidx.annotation.RequiresPermission
 import androidx.core.splashscreen.SplashScreen.Companion.installSplashScreen
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.runtime.Composable
@@ -17,6 +24,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.wear.compose.material3.ListHeader
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.tooling.preview.Preview
+import androidx.core.app.ActivityCompat
 import androidx.wear.compose.material3.Text
 import androidx.wear.compose.material3.Button
 import androidx.wear.compose.material3.ButtonDefaults
@@ -31,20 +39,99 @@ import com.google.android.horologist.compose.layout.rememberResponsiveColumnPadd
 import androidx.wear.compose.material3.lazy.rememberTransformationSpec
 import com.google.android.horologist.compose.layout.ColumnItemType
 import androidx.wear.compose.material3.lazy.transformedHeight
+import com.google.android.gms.location.FusedLocationProviderClient
+import com.google.android.gms.location.LocationCallback
+import com.google.android.gms.location.LocationServices
+import com.google.android.gms.location.LocationResult
+import com.google.android.gms.location.LocationRequest
+import com.google.android.gms.location.Priority
 
 class MainActivity : ComponentActivity() {
-    override fun onCreate(savedInstanceState: Bundle?) {
-        installSplashScreen()
+    private lateinit var fusedLocationClient: FusedLocationProviderClient
+    private lateinit var locationCallback: LocationCallback
 
+    private var requestCode = 93479024;
+
+   @RequiresApi(Build.VERSION_CODES.S)
+   override fun onCreate(savedInstanceState: Bundle?) {
+//        installSplashScreen()
+
+        Log.i("MetroWear", "onCreate")
         super.onCreate(savedInstanceState)
+
+        locationCallback = object : LocationCallback() {
+            override fun onLocationResult(p0: LocationResult) {
+                Log.i("MetroWear", "Got locations")
+                for (location in p0.locations) {
+                    // Update UI with location data
+                    setContent {
+                        ComposeList(getMockArrivals(), location.latitude.toString())
+                    }
+                }
+            }
+        }
+
+        fusedLocationClient = LocationServices.getFusedLocationProviderClient(this)
 
         setTheme(android.R.style.Theme_DeviceDefault)
 
+        if (checkSelfPermission(Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_DENIED) {
+            Log.e("MetroWear", "No location permission")
+            requestPermissions(
+                arrayOf(Manifest.permission.ACCESS_FINE_LOCATION, Manifest.permission.ACCESS_COARSE_LOCATION),
+                requestCode
+            )
+        } else {
+            Log.i("MetroWear", "Location permission allowed")
+            startLocationUpdates()
+        }
+
         setContent {
-            ComposeList(getMockArrivals())
+            ComposeList(getMockArrivals(), "none")
         }
     }
 
+    @RequiresApi(Build.VERSION_CODES.S)
+    override fun onRequestPermissionsResult(
+        requestCode: Int,
+        permissions: Array<out String?>,
+        grantResults: IntArray,
+        deviceId: Int
+    ) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults, deviceId)
+        if (grantResults.all { it == PackageManager.PERMISSION_GRANTED }) {
+            if (ActivityCompat.checkSelfPermission(
+                    this,
+                    Manifest.permission.ACCESS_FINE_LOCATION
+                ) != PackageManager.PERMISSION_GRANTED || ActivityCompat.checkSelfPermission(
+                    this,
+                    Manifest.permission.ACCESS_COARSE_LOCATION
+                ) != PackageManager.PERMISSION_GRANTED
+            ) {
+                // TODO: Consider calling
+                //    ActivityCompat#requestPermissions
+                // here to request the missing permissions, and then overriding
+                //   public void onRequestPermissionsResult(int requestCode, String[] permissions,
+                //                                          int[] grantResults)
+                // to handle the case where the user grants the permission. See the documentation
+                // for ActivityCompat#requestPermissions for more details.
+                return
+            }
+            startLocationUpdates();
+        }
+    }
+
+    @RequiresApi(Build.VERSION_CODES.S)
+    @RequiresPermission(allOf = [Manifest.permission.ACCESS_FINE_LOCATION, Manifest.permission.ACCESS_COARSE_LOCATION])
+    override fun onResume() {
+        super.onResume()
+        startLocationUpdates()
+    }
+
+    override fun onPause() {
+        super.onPause()
+        stopLocationUpdates()
+    }
 
     companion object {
         internal const val EXTRA_JOURNEY = "journey"
@@ -52,17 +139,31 @@ class MainActivity : ComponentActivity() {
         internal const val EXTRA_JOURNEY_NEW = "journey:new"
         internal const val EXTRA_CONVERSATION_CONTACT = "conversation:contact"
     }
+
+    @RequiresApi(Build.VERSION_CODES.S)
+    @RequiresPermission(allOf = [Manifest.permission.ACCESS_FINE_LOCATION, Manifest.permission.ACCESS_COARSE_LOCATION])
+    private fun startLocationUpdates() {
+        Log.i("MetroWear", "Starting location updates")
+        fusedLocationClient.requestLocationUpdates(LocationRequest.Builder(Priority.PRIORITY_HIGH_ACCURACY, 30000).build(),
+            locationCallback,
+            Looper.getMainLooper())
+    }
+
+    private fun stopLocationUpdates() {
+        Log.i("MetroWear", "Stopping location updates")
+        fusedLocationClient.removeLocationUpdates(locationCallback)
+    }
 }
 
 @Preview(device = WearDevices.SMALL_ROUND, showSystemUi = true)
 @Composable
 fun DefaultPreview() {
-    ComposeList(getMockArrivals())
+    ComposeList(getMockArrivals(), "duh")
 }
 
 @OptIn(ExperimentalTime::class)
 @Composable
-fun ComposeList(arrivals: List<TrainArrival>) {
+fun ComposeList(arrivals: List<TrainArrival>, location: String) {
     // [START android_wear_list]
     val columnState = rememberTransformingLazyColumnState()
     val contentPadding = rememberResponsiveColumnPadding(
@@ -83,7 +184,7 @@ fun ComposeList(arrivals: List<TrainArrival>) {
                     modifier = Modifier.fillMaxWidth().transformedHeight(this, transformationSpec),
                     transformation = SurfaceTransformation(transformationSpec)
                 ) {
-                    Text(text = "Clarendon Arrivals")
+                    Text(text = location)
                 }
             }
             // ... other items
