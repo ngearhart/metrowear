@@ -45,7 +45,11 @@ import com.google.android.gms.location.LocationServices
 import com.google.android.gms.location.LocationResult
 import com.google.android.gms.location.LocationRequest
 import com.google.android.gms.location.Priority
+import com.noahgearhart.metrowear.GeoJson
+import com.noahgearhart.metrowear.R
+import com.noahgearhart.metrowear.Station
 import com.noahgearhart.metrowear.callApi
+import com.noahgearhart.metrowear.getClosestStationToCoordinates
 import io.ktor.client.HttpClient
 import io.ktor.client.engine.cio.CIO
 import io.ktor.client.request.get
@@ -54,9 +58,11 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.newSingleThreadContext
 import kotlinx.coroutines.withContext
+import kotlinx.serialization.json.Json
 
 
 class MainActivity : ComponentActivity() {
@@ -64,8 +70,9 @@ class MainActivity : ComponentActivity() {
     private lateinit var locationCallback: LocationCallback
 
     private var currentStatus = listOf<TrainArrival>();
-    private var currentStation = "";
+    private var closestStation: Station? = null;
     private var requestCode = 93479024;
+    private var stationData: GeoJson? = null;
     val scope = CoroutineScope(Job() + Dispatchers.Main)
 
     @RequiresApi(Build.VERSION_CODES.S)
@@ -75,13 +82,17 @@ class MainActivity : ComponentActivity() {
         Log.i("MetroWear", "onCreate")
         super.onCreate(savedInstanceState)
 
+
         locationCallback = object : LocationCallback() {
             override fun onLocationResult(p0: LocationResult) {
                 Log.i("MetroWear", "Got locations")
                 for (location in p0.locations) {
-                    currentStation = location.latitude.toString()
-                    // Update UI with location data
-                    updateUI()
+                    Log.i("MetroWear", "Lat=" + location.latitude + ",long=" + location.longitude)
+                }
+                if (stationData != null) {
+                    closestStation = getClosestStationToCoordinates(stationData!!, p0.locations.last().latitude, p0.locations.last().longitude)
+                    Log.i("MetroWear", "Closest Station = " + closestStation!!.name);
+                    oneTimeTrainApiUpdate()
                 }
             }
         }
@@ -105,19 +116,37 @@ class MainActivity : ComponentActivity() {
         }
 
         updateUI()
-
         scope.launch {
             withContext(Dispatchers.IO) {
-                currentStatus = callApi()
+                if (stationData == null) {
+                    resources.openRawResource(R.raw.stations)
+                        .bufferedReader().use {
+                            val jsonDeserializer = Json {
+                                isLenient = true
+                                ignoreUnknownKeys = true
+                            }
+                            stationData = jsonDeserializer.decodeFromString<GeoJson>(it.readText())
+                        }
+                }
+            }
+        }
+    }
+
+    fun oneTimeTrainApiUpdate() {
+        scope.launch {
+            Log.i("MetroWear", "Running one time train API update")
+            withContext(Dispatchers.IO) {
+                if (closestStation != null) {
+                    currentStatus = callApi(closestStation!!)
+                }
                 updateUI()
             }
         }
-
     }
 
     fun updateUI() {
         setContent {
-            ComposeList(currentStatus, currentStation)
+            ComposeList(currentStatus, closestStation?.name ?: "Loading")
         }
     }
 
@@ -161,6 +190,7 @@ class MainActivity : ComponentActivity() {
     override fun onPause() {
         super.onPause()
         stopLocationUpdates()
+        scope.cancel()
     }
 
     override fun onDestroy() {
@@ -180,7 +210,7 @@ class MainActivity : ComponentActivity() {
     private fun startLocationUpdates() {
         Log.i("MetroWear", "Starting location updates")
         fusedLocationClient.requestLocationUpdates(
-            LocationRequest.Builder(Priority.PRIORITY_HIGH_ACCURACY, 30000).build(),
+            LocationRequest.Builder(Priority.PRIORITY_HIGH_ACCURACY, 15000).build(),
             locationCallback,
             Looper.getMainLooper()
         )

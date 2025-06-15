@@ -131,9 +131,9 @@ data class TrainPredictions(
     )
 }
 
-suspend fun callApi(): List<TrainArrival> {
+suspend fun callApi(station: Station): List<TrainArrival> {
     val apiKey = BuildConfig.wmataApiKey;
-    Log.i("MetroWear", apiKey)
+    Log.i("MetroWear", "Calling WMATA API for " + station.code)
     val client = HttpClient(CIO) {
         install(ContentNegotiation) {
             json(Json {
@@ -142,12 +142,13 @@ suspend fun callApi(): List<TrainArrival> {
             })
         }
     }
-    val response: TrainPredictions = client.get("https://api.wmata.com/StationPrediction.svc/json/GetPrediction/C01") {
+    val response: TrainPredictions = client.get("https://api.wmata.com/StationPrediction.svc/json/GetPrediction/" + station.code) {
         headers {
             append("api_key", apiKey)
         }
     }.body()
     client.close();
+    Log.i("MetroWear", "Good reply from WMATA API")
     return response.trains.map {
         TrainArrival(
             line = Line.fromCode(it.line ?: ""),

@@ -82,6 +82,6 @@ dependencies {
     implementation("io.ktor:ktor-client-content-negotiation:3.1.3")
     implementation("io.ktor:ktor-serialization-kotlinx-json:3.1.3")
 
-
+    implementation("io.github.piruin:geok:1.2.2")
 
 }
