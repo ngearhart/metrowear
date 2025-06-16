@@ -1,7 +1,10 @@
 package com.noahgearhart.metrowear.tile
 
+import android.Manifest
 import android.content.ComponentName
 import android.content.Context
+import android.content.pm.PackageManager
+import android.util.Log
 import androidx.wear.protolayout.ActionBuilders
 import androidx.wear.protolayout.ActionBuilders.launchAction
 import androidx.wear.protolayout.ColorBuilders.argb
@@ -29,11 +32,25 @@ import androidx.wear.tiles.TileBuilders
 import androidx.wear.tiles.tooling.preview.Preview
 import androidx.wear.tiles.tooling.preview.TilePreviewData
 import androidx.wear.tooling.preview.devices.WearDevices
+import com.google.android.gms.location.FusedLocationProviderClient
+import com.google.android.gms.location.LocationCallback
+import com.google.android.gms.location.LocationResult
+import com.google.android.gms.location.LocationServices
 import com.google.android.horologist.annotations.ExperimentalHorologistApi
 import com.google.android.horologist.tiles.SuspendingTileService
+import com.noahgearhart.metrowear.GeoJson
+import com.noahgearhart.metrowear.R
+import com.noahgearhart.metrowear.Station
 import com.noahgearhart.metrowear.TrainArrival
+import com.noahgearhart.metrowear.getClosestStationToCoordinates
 import com.noahgearhart.metrowear.getMockArrivals
 import com.noahgearhart.metrowear.presentation.MainActivity
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import kotlinx.serialization.json.Json
 
 private const val RESOURCES_VERSION = "0"
 
